@@ -11,17 +11,37 @@ use crossterm::{
     execute, queue,
     terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate},
 };
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, warn};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum RenderingTask {
     ClearScreen,
     Render(Box<Ctx>),
     Resize(u16, u16),
     Resume,
     Suspend,
+    /// Exit the TUI (disable raw mode, hide cursor, etc.) in preparation for running an external
+    /// command in fork mode. Sends `()` on the provided oneshot channel once the TUI has been
+    /// fully exited, so the caller can synchronize before spawning the child process.
+    SuspendForAction(oneshot::Sender<()>),
     Quit,
+}
+
+impl Clone for RenderingTask {
+    fn clone(&self) -> Self {
+        match self {
+            Self::ClearScreen => Self::ClearScreen,
+            Self::Render(ctx) => Self::Render(ctx.clone()),
+            Self::Resize(w, h) => Self::Resize(*w, *h),
+            Self::Resume => Self::Resume,
+            Self::Suspend => Self::Suspend,
+            Self::SuspendForAction(_) => {
+                panic!("SuspendForAction cannot be cloned")
+            }
+            Self::Quit => Self::Quit,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -135,6 +155,10 @@ pub async fn render<W: Write>(
                     action_tx.send(Action::Resume)?;
                     action_tx.send(Action::ClearScreen)?;
                     tui.enter()?;
+                }
+                RenderingTask::SuspendForAction(done_tx) => {
+                    tui.exit()?;
+                    let _ = done_tx.send(());
                 }
                 RenderingTask::Resume => {
                     tui.enter()?;

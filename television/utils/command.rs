@@ -12,6 +12,7 @@ use rustc_hash::FxHashSet;
 use std::os::unix::process::CommandExt;
 use std::{
     collections::HashMap,
+    io::IsTerminal,
     process::{Command, ExitStatus, Stdio},
 };
 use tracing::debug;
@@ -173,14 +174,52 @@ pub fn execute_action(
     #[cfg(unix)]
     match action_spec.mode {
         ExecutionMode::Execute => {
+            // If stdin/stdout are not TTYs (e.g. when tv is run via command substitution),
+            // redirect them to /dev/tty so that the editor can use the terminal properly.
+            if !std::io::stdin().is_terminal() {
+                if let Ok(f) = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("/dev/tty")
+                {
+                    cmd.stdin(f);
+                }
+            }
+            if !std::io::stdout().is_terminal() {
+                if let Ok(f) = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("/dev/tty")
+                {
+                    cmd.stdout(f);
+                }
+            }
             let err = cmd.exec();
             eprintln!("Failed to execute command: {}", err);
             Err(err.into())
         }
         ExecutionMode::Fork => {
-            cmd.stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit());
+            // If stdin/stdout are not TTYs (e.g. when tv is run via command substitution),
+            // redirect them to /dev/tty so that the editor can use the terminal properly.
+            let stdin = if std::io::stdin().is_terminal() {
+                Stdio::inherit()
+            } else {
+                std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("/dev/tty")
+                    .map_or(Stdio::inherit(), Stdio::from)
+            };
+            let stdout = if std::io::stdout().is_terminal() {
+                Stdio::inherit()
+            } else {
+                std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open("/dev/tty")
+                    .map_or(Stdio::inherit(), Stdio::from)
+            };
+            cmd.stdin(stdin).stdout(stdout).stderr(Stdio::inherit());
 
             let mut child = cmd.spawn()?;
             Ok(child.wait()?)

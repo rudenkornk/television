@@ -621,7 +621,8 @@ impl App {
                                         self.run_external_command_fork(
                                             &action_spec,
                                             &selected_entries,
-                                        )?;
+                                        )
+                                        .await?;
                                     }
                                     // clean up and exit the TUI and execute the action
                                     ExecutionMode::Execute => {
@@ -665,7 +666,7 @@ impl App {
         Ok(ActionOutcome::None)
     }
 
-    fn run_external_command_fork(
+    async fn run_external_command_fork(
         &self,
         action_spec: &ActionSpec,
         entries: &FxHashSet<Entry>,
@@ -678,8 +679,26 @@ impl App {
                 anyhow::anyhow!("Failed to suspend event loop: {}", e)
             })?;
 
-        // execute the external command in a separate process
-        execute_action(action_spec, entries).map_err(|e| {
+        // Exit the TUI (disable raw mode, hide cursor, etc.) before spawning the external
+        // command. We use a oneshot channel to synchronize with the render thread so that
+        // we don't spawn the child process before the terminal has been fully restored.
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+        self.render_tx
+            .send(RenderingTask::SuspendForAction(done_tx))?;
+        // Await until the render thread confirms it has exited the TUI.
+        done_rx.await.map_err(|e| {
+            anyhow::anyhow!("Failed to wait for TUI suspension: {}", e)
+        })?;
+
+        // execute the external command in a separate process (blocking, run off the async executor)
+        let action_spec = action_spec.clone();
+        let entries = entries.clone();
+        tokio::task::spawn_blocking(move || {
+            execute_action(&action_spec, &entries)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to join action task: {}", e))?
+        .map_err(|e| {
             error!("Failed to execute external action: {}", e);
             anyhow::anyhow!("Failed to execute external action: {}", e)
         })?;

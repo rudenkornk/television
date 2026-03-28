@@ -240,6 +240,7 @@ where
     }
 
     pub fn enter(&mut self) -> Result<()> {
+        enable_raw_mode()?;
         let backend = self.terminal.backend_mut();
 
         execute!(backend, EnableMouseCapture)?;
