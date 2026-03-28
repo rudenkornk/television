@@ -204,10 +204,9 @@ pub fn execute_action(
 
 #[cfg(unix)]
 fn attach_to_tty(cmd: &mut Command) -> Result<()> {
-    let tty = match OpenOptions::new().read(true).write(true).open("/dev/tty")
-    {
-        Ok(tty) => tty,
-        Err(_) => return Ok(()),
+    let Ok(tty) = OpenOptions::new().read(true).write(true).open("/dev/tty")
+    else {
+        return Ok(());
     };
 
     cmd.stdin(Stdio::from(tty.try_clone()?))

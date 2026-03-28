@@ -62,7 +62,7 @@ command = "ls '{}'"
 mode = "execute"
 "#;
 
-    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
+    write_toml_config(&cable_dir, "files.toml", files_toml_content);
 
     // Use the LICENSE file as input since it exists in the repo
     let mut cmd = tv();
@@ -127,7 +127,7 @@ command = "ls '{}'"
 mode = "execute"
 "#;
 
-    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
+    write_toml_config(&cable_dir, "files.toml", files_toml_content);
 
     // Use the LICENSE file as input since it exists in the repo
     let mut cmd = tv();
@@ -184,11 +184,12 @@ shell = "bash"
 mode = "execute"
 "#;
 
-    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
+    write_toml_config(&cable_dir, "files.toml", files_toml_content);
 
+    let tv_bin = option_env!("TV_BIN_PATH").unwrap_or("./target/debug/tv");
     let script = format!(
         "out=$('{}' --cable-dir '{}' --config-file '{}' files --input LICENSE); printf '\\nSHELL_CAPTURE=[%s]\\n' \"$out\"",
-        *TV_BIN_PATH,
+        tv_bin,
         cable_dir.display(),
         DEFAULT_CONFIG_FILE,
     );
@@ -261,9 +262,10 @@ mode = "fork"
 
     write_toml_config(&cable_dir, "files.toml", &files_toml_content);
 
+    let tv_bin = option_env!("TV_BIN_PATH").unwrap_or("./target/debug/tv");
     let script = format!(
         "out=$('{}' --cable-dir '{}' --config-file '{}' files --input LICENSE); printf '\\nSHELL_CAPTURE=[%s]\\n' \"$out\"",
-        *TV_BIN_PATH,
+        tv_bin,
         cable_dir.display(),
         DEFAULT_CONFIG_FILE,
     );
