@@ -179,10 +179,7 @@ pub fn execute_action(
             Err(err.into())
         }
         ExecutionMode::Fork => {
-            cmd.stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit());
-
+            attach_to_tty(&mut cmd)?;
             let mut child = cmd.spawn()?;
             Ok(child.wait()?)
         }

@@ -62,7 +62,7 @@ command = "ls '{}'"
 mode = "execute"
 "#;
 
-    write_toml_config(&cable_dir, "files.toml", files_toml_content);
+    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
 
     // Use the LICENSE file as input since it exists in the repo
     let mut cmd = tv();
@@ -127,7 +127,7 @@ command = "ls '{}'"
 mode = "execute"
 "#;
 
-    write_toml_config(&cable_dir, "files.toml", files_toml_content);
+    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
 
     // Use the LICENSE file as input since it exists in the repo
     let mut cmd = tv();
@@ -184,7 +184,7 @@ shell = "bash"
 mode = "execute"
 "#;
 
-    write_toml_config(&cable_dir, "files.toml", files_toml_content);
+    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
 
     let script = format!(
         "out=$('{}' --cable-dir '{}' --config-file '{}' files --input LICENSE); printf '\\nSHELL_CAPTURE=[%s]\\n' \"$out\"",
@@ -221,6 +221,87 @@ mode = "execute"
     assert!(
         !output.contains("TTY_BAD"),
         "Expected action stdout to be reattached to the tty, got:\n{:?}",
+        output
+    );
+}
+
+#[test]
+fn test_fork_action_uses_tty_when_stdout_is_captured() {
+    let mut tester = PtyTester::new();
+
+    let cable_dir =
+        TempDir::new().unwrap().path().join("captured_stdout_fork");
+    let status_file = cable_dir.join("fork-status");
+    fs::create_dir_all(&cable_dir).unwrap();
+
+    let files_toml_content = r#"
+[metadata]
+name = "files"
+description = "A channel to select files and directories"
+requirements = ["fd", "bat"]
+
+[source]
+command = ["fd -t f", "fd -t f -H"]
+
+[preview]
+command = "bat -n --color=always '{}'"
+env = { BAT_THEME = "ansi" }
+
+[keybindings]
+shortcut = "f1"
+f12 = "actions:ttycheck"
+
+[actions.ttycheck]
+description = "verify fork actions use the terminal tty"
+command = "if test -t 1; then printf 'ok' > '{status_file}'; else printf 'bad' > '{status_file}'; fi; printf 'FORK_STDOUT\\n'"
+shell = "bash"
+mode = "fork"
+"#
+    .replace("{status_file}", &status_file.display().to_string());
+
+    write_toml_config(&cable_dir, "files.toml", &files_toml_content);
+
+    let script = format!(
+        "out=$('{}' --cable-dir '{}' --config-file '{}' files --input LICENSE); printf '\\nSHELL_CAPTURE=[%s]\\n' \"$out\"",
+        *TV_BIN_PATH,
+        cable_dir.display(),
+        DEFAULT_CONFIG_FILE,
+    );
+
+    let mut cmd = CommandBuilder::new("bash");
+    cmd.arg("-lc");
+    cmd.arg(script);
+
+    let mut child = tester.spawn_command_tui(cmd);
+
+    sleep(DEFAULT_DELAY);
+    tester.assert_tui_frame_contains("LICENSE");
+
+    tester.send(&f(12));
+
+    sleep(DEFAULT_DELAY);
+    tester.assert_tui_frame_contains("LICENSE");
+
+    tester.send(&ctrl('c'));
+
+    PtyTester::assert_exit_ok(&mut child, Duration::from_secs(2));
+    sleep(DEFAULT_DELAY);
+
+    let output = tester.read_raw_output();
+    let status = fs::read_to_string(&status_file).unwrap();
+    assert!(
+        status == "ok",
+        "Expected action stdout to be attached to a tty, got status {:?}",
+        status
+    );
+    assert!(
+        output.contains("SHELL_CAPTURE=[]"),
+        "Expected shell capture to stay empty, got:\n{:?}",
+        output
+    );
+    assert!(
+        !output.contains("FORK_STDOUT"),
+        "Expected fork action stdout to bypass shell capture, got:\n{:?}",
         output
     );
 }
