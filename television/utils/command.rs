@@ -8,12 +8,12 @@ use crate::{
 use anyhow::Result;
 use lazy_regex::{Lazy, Regex, regex};
 use rustc_hash::FxHashSet;
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 use std::{
     collections::HashMap,
     process::{Command, ExitStatus, Stdio},
 };
+#[cfg(unix)]
+use std::{fs::OpenOptions, os::unix::process::CommandExt};
 use tracing::debug;
 
 static COMPLEX_BRACES_REGEX: &Lazy<Regex> = regex!(r"\{[^}]+\}");
@@ -173,6 +173,7 @@ pub fn execute_action(
     #[cfg(unix)]
     match action_spec.mode {
         ExecutionMode::Execute => {
+            attach_to_tty(&mut cmd)?;
             let err = cmd.exec();
             eprintln!("Failed to execute command: {}", err);
             Err(err.into())
@@ -202,6 +203,21 @@ pub fn execute_action(
         let mut child = cmd.spawn()?;
         Ok(child.wait()?)
     }
+}
+
+#[cfg(unix)]
+fn attach_to_tty(cmd: &mut Command) -> Result<()> {
+    let tty = match OpenOptions::new().read(true).write(true).open("/dev/tty")
+    {
+        Ok(tty) => tty,
+        Err(_) => return Ok(()),
+    };
+
+    cmd.stdin(Stdio::from(tty.try_clone()?))
+        .stdout(Stdio::from(tty.try_clone()?))
+        .stderr(Stdio::from(tty));
+
+    Ok(())
 }
 
 #[cfg(test)]
