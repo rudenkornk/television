@@ -101,7 +101,7 @@ function tv_smart_autocomplete
     # move to the next line so that the prompt is not overwritten
     printf "\n"
 
-    if set -l result (tv $dir --autocomplete-prompt "$current_prompt" --input $tv_query --inline --no-status-bar)
+    if set -l result (tv $dir --autocomplete-prompt "$current_prompt" --input $tv_query --no-status-bar)
         # Remove last token from commandline.
         commandline -t ''
 
@@ -130,7 +130,7 @@ function tv_shell_history
     # move to the next line so that the prompt is not overwritten
     printf "\n"
 
-    set -l output (tv fish-history --input "$current_prompt" --inline --no-status-bar)
+    set -l output (tv fish-history --input "$current_prompt" --no-status-bar)
 
     if test -n "$output"
         commandline -r "$output"
